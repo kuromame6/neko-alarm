@@ -148,7 +148,7 @@
       font-weight: 500;
       cursor: pointer;
       transition: opacity 0.15s, transform 0.1s;
-      background: #7c5cbf;
+      background: #4bbfcf;
       color: #fff;
       letter-spacing: 0.5px;
     }
@@ -421,28 +421,78 @@
     input.disabled  = false;
   }
 
-  // Web Audio API
+  // 🐱 かわいい猫声シンセサイザー
   function playBeep() {
     audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 
-    function beep() {
+    function meow() {
       if (!ringing) return;
-      // 「にゃー」っぽい音: 周波数スウィープ
-      const osc  = audioCtx.createOscillator();
-      const gain = audioCtx.createGain();
-      osc.connect(gain);
-      gain.connect(audioCtx.destination);
-      osc.type = 'triangle';
-      osc.frequency.setValueAtTime(600, audioCtx.currentTime);
-      osc.frequency.linearRampToValueAtTime(900, audioCtx.currentTime + 0.3);
-      osc.frequency.linearRampToValueAtTime(700, audioCtx.currentTime + 0.6);
-      gain.gain.setValueAtTime(0.35, audioCtx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.7);
-      osc.start(audioCtx.currentTime);
-      osc.stop(audioCtx.currentTime + 0.7);
-      setTimeout(beep, 1100);
+      const now = audioCtx.currentTime;
+      const dur = 0.85;
+
+      // ── オシレーター（のこぎり波＝倍音豊富で動物声に近い）
+      const osc = audioCtx.createOscillator();
+      osc.type = 'sawtooth';
+
+      // 「にゃ〜ん」の音程カーブ
+      // に（低）→ ゃ（上昇）→ 〜（最高音）→ ん（下降）
+      osc.frequency.setValueAtTime(200, now);
+      osc.frequency.linearRampToValueAtTime(420, now + 0.12);
+      osc.frequency.linearRampToValueAtTime(520, now + 0.28);
+      osc.frequency.exponentialRampToValueAtTime(300, now + dur);
+
+      // ── ビブラート（LFO）：語尾の「〜ん」をゆらゆら
+      const lfo     = audioCtx.createOscillator();
+      const lfoGain = audioCtx.createGain();
+      lfo.frequency.value = 7;
+      lfoGain.gain.setValueAtTime(0, now + 0.25);
+      lfoGain.gain.linearRampToValueAtTime(12, now + 0.45); // 後半にかけてかかる
+      lfo.connect(lfoGain);
+      lfoGain.connect(osc.frequency);
+
+      // ── フォルマントフィルター①（鼻腔共鳴：にゃの「に」感）
+      const f1 = audioCtx.createBiquadFilter();
+      f1.type = 'bandpass';
+      f1.frequency.setValueAtTime(700, now);
+      f1.frequency.linearRampToValueAtTime(1100, now + 0.3);
+      f1.frequency.linearRampToValueAtTime(850, now + dur);
+      f1.Q.value = 4;
+
+      // ── フォルマントフィルター②（口腔共鳴：「ゃ〜」の母音感）
+      const f2 = audioCtx.createBiquadFilter();
+      f2.type = 'bandpass';
+      f2.frequency.setValueAtTime(1400, now);
+      f2.frequency.linearRampToValueAtTime(1800, now + 0.25);
+      f2.frequency.linearRampToValueAtTime(1200, now + dur);
+      f2.Q.value = 3;
+
+      // ── ミックス（f1 + f2 をブレンド）
+      const mix = audioCtx.createGain();
+      mix.gain.value = 0.5;
+
+      // ── マスターゲイン（エンベロープ）
+      const master = audioCtx.createGain();
+      master.gain.setValueAtTime(0, now);
+      master.gain.linearRampToValueAtTime(0.42, now + 0.06);   // ソフトアタック
+      master.gain.setValueAtTime(0.42, now + 0.55);             // サステイン
+      master.gain.exponentialRampToValueAtTime(0.001, now + dur); // ふわっとリリース
+
+      // ── 接続
+      osc.connect(f1);
+      osc.connect(f2);
+      f1.connect(mix);
+      f2.connect(mix);
+      mix.connect(master);
+      master.connect(audioCtx.destination);
+
+      osc.start(now);
+      osc.stop(now + dur);
+      lfo.start(now);
+      lfo.stop(now + dur);
+
+      setTimeout(meow, 1300);
     }
-    beep();
+    meow();
   }
 
   function stopBeep() {
