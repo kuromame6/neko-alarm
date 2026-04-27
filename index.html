@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>黒猫アラーム</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
+      background: #1a1a2e;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 32px;
+      overflow: hidden;
+    }
+
+    /* 星 */
+    .stars {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+    }
+    .star {
+      position: absolute;
+      background: #fff;
+      border-radius: 50%;
+      animation: twinkle var(--d) ease-in-out infinite alternate;
+    }
+    @keyframes twinkle {
+      from { opacity: 0.1; }
+      to   { opacity: 0.9; }
+    }
+
+    /* 月 */
+    .moon {
+      position: fixed;
+      top: 40px;
+      right: 60px;
+      width: 56px;
+      height: 56px;
+      background: #ffe082;
+      border-radius: 50%;
+      box-shadow: 0 0 24px #ffe08288;
+    }
+
+    /* 現在時刻 */
+    #clock {
+      font-size: 64px;
+      font-weight: 200;
+      color: #e8e8f0;
+      letter-spacing: 4px;
+      font-variant-numeric: tabular-nums;
+      text-shadow: 0 0 30px rgba(200,180,255,0.4);
+    }
+
+    /* 黒猫SVG */
+    .cat-wrap {
+      position: relative;
+      width: 160px;
+      height: 160px;
+    }
+    .cat-wrap svg {
+      width: 100%;
+      height: 100%;
+      filter: drop-shadow(0 8px 24px rgba(0,0,0,0.5));
+    }
+
+    /* 目のアニメーション */
+    .eye { transition: transform 0.1s; }
+    .blink { animation: blink 4s ease-in-out infinite; }
+    @keyframes blink {
+      0%, 90%, 100% { transform: scaleY(1); }
+      95%           { transform: scaleY(0.05); }
+    }
+
+    /* 尻尾揺れ */
+    .tail { animation: tail 3s ease-in-out infinite; transform-origin: 30px 120px; }
+    @keyframes tail {
+      0%, 100% { transform: rotate(0deg); }
+      50%       { transform: rotate(12deg); }
+    }
+
+    /* アラームセット中：ゆらゆら */
+    .cat-wrap.active svg { animation: sway 2s ease-in-out infinite; }
+    @keyframes sway {
+      0%, 100% { transform: rotate(-2deg); }
+      50%       { transform: rotate(2deg); }
+    }
+
+    /* 鳴動中：ジャンプ */
+    .cat-wrap.ring svg { animation: jump 0.4s ease-in-out infinite alternate; }
+    @keyframes jump {
+      from { transform: translateY(0); }
+      to   { transform: translateY(-16px); }
+    }
+
+    /* カード */
+    .card {
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 24px;
+      padding: 32px 40px;
+      width: 320px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+      backdrop-filter: blur(8px);
+    }
+
+    .label {
+      font-size: 11px;
+      letter-spacing: 2px;
+      color: rgba(255,255,255,0.35);
+      text-transform: uppercase;
+      text-align: center;
+    }
+
+    /* 時刻入力 */
+    #alarmTime {
+      width: 100%;
+      background: rgba(0,0,0,0.3);
+      border: 1px solid rgba(255,255,255,0.15);
+      border-radius: 12px;
+      color: #e8e8f0;
+      font-size: 36px;
+      font-weight: 200;
+      text-align: center;
+      padding: 10px 0;
+      outline: none;
+      letter-spacing: 3px;
+      transition: border-color 0.2s;
+    }
+    #alarmTime:focus { border-color: rgba(180,160,255,0.5); }
+    #alarmTime::-webkit-calendar-picker-indicator { filter: invert(1); opacity: 0.4; }
+
+    /* ボタン */
+    #toggleBtn {
+      width: 100%;
+      padding: 14px;
+      border-radius: 12px;
+      border: none;
+      font-size: 15px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: opacity 0.15s, transform 0.1s;
+      background: #7c5cbf;
+      color: #fff;
+      letter-spacing: 0.5px;
+    }
+    #toggleBtn:hover { opacity: 0.85; }
+    #toggleBtn:active { transform: scale(0.97); }
+    #toggleBtn.active {
+      background: rgba(255,255,255,0.1);
+      border: 1px solid rgba(255,255,255,0.2);
+    }
+
+    /* ステータス */
+    #status {
+      font-size: 12px;
+      color: rgba(255,255,255,0.3);
+      text-align: center;
+      min-height: 16px;
+    }
+    #status.on { color: rgba(180,160,255,0.8); }
+
+    /* 吹き出し */
+    .bubble {
+      position: absolute;
+      top: -36px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #fff;
+      color: #333;
+      font-size: 12px;
+      padding: 4px 10px;
+      border-radius: 12px;
+      white-space: nowrap;
+      opacity: 0;
+      transition: opacity 0.3s;
+      pointer-events: none;
+    }
+    .bubble::after {
+      content: '';
+      position: absolute;
+      bottom: -5px;
+      left: 50%;
+      transform: translateX(-50%);
+      border: 5px solid transparent;
+      border-top-color: #fff;
+      border-bottom: none;
+    }
+    .bubble.show { opacity: 1; }
+
+    /* 鳴動オーバーレイ */
+    #overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(10,5,30,0.85);
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 24px;
+      backdrop-filter: blur(6px);
+      z-index: 100;
+    }
+    #overlay.show { display: flex; }
+
+    #overlayTime {
+      font-size: 80px;
+      font-weight: 100;
+      color: #e8e8f0;
+      animation: pulse 1s ease-in-out infinite;
+      letter-spacing: 4px;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0.3; }
+    }
+
+    .overlay-msg {
+      font-size: 18px;
+      color: rgba(255,255,255,0.6);
+    }
+
+    #stopBtn {
+      margin-top: 8px;
+      padding: 14px 48px;
+      border-radius: 999px;
+      border: 2px solid rgba(255,255,255,0.5);
+      background: transparent;
+      color: #fff;
+      font-size: 15px;
+      cursor: pointer;
+      transition: background 0.2s, color 0.2s;
+      letter-spacing: 1px;
+    }
+    #stopBtn:hover { background: #fff; color: #1a1a2e; }
+  </style>
+</head>
+<body>
+
+  <!-- 星 -->
+  <div class="stars" id="stars"></div>
+  <!-- 月 -->
+  <div class="moon"></div>
+
+  <!-- 時計 -->
+  <div id="clock">00:00:00</div>
+
+  <!-- 黒猫 -->
+  <div class="cat-wrap" id="catWrap">
+    <div class="bubble" id="bubble">にゃ〜ん 🐾</div>
+    <svg viewBox="0 0 160 180" xmlns="http://www.w3.org/2000/svg">
+      <!-- 尻尾 -->
+      <path class="tail" d="M55 140 Q20 155 25 175 Q30 185 40 175 Q35 165 60 150 Z" fill="#111"/>
+      <!-- 体 -->
+      <ellipse cx="80" cy="130" rx="45" ry="42" fill="#111"/>
+      <!-- 頭 -->
+      <circle cx="80" cy="80" r="42" fill="#111"/>
+      <!-- 耳（左） -->
+      <polygon points="44,46 34,16 62,38" fill="#111"/>
+      <polygon points="46,43 38,22 60,38" fill="#2a1a2a"/>
+      <!-- 耳（右） -->
+      <polygon points="116,46 126,16 98,38" fill="#111"/>
+      <polygon points="114,43 122,22 100,38" fill="#2a1a2a"/>
+      <!-- 目（左） -->
+      <g class="eye blink" style="transform-origin:64px 80px">
+        <ellipse cx="64" cy="80" rx="10" ry="12" fill="#2ecc71"/>
+        <ellipse cx="64" cy="80" rx="5" ry="11" fill="#111"/>
+        <circle cx="67" cy="76" r="2.5" fill="#fff" opacity="0.9"/>
+      </g>
+      <!-- 目（右） -->
+      <g class="eye blink" style="transform-origin:96px 80px; animation-delay:0.1s">
+        <ellipse cx="96" cy="80" rx="10" ry="12" fill="#2ecc71"/>
+        <ellipse cx="96" cy="80" rx="5" ry="11" fill="#111"/>
+        <circle cx="99" cy="76" r="2.5" fill="#fff" opacity="0.9"/>
+      </g>
+      <!-- 鼻 -->
+      <path d="M77 93 L80 97 L83 93 Z" fill="#e91e8c"/>
+      <!-- 口 -->
+      <path d="M80 97 Q74 103 70 101" fill="none" stroke="#555" stroke-width="1.5" stroke-linecap="round"/>
+      <path d="M80 97 Q86 103 90 101" fill="none" stroke="#555" stroke-width="1.5" stroke-linecap="round"/>
+      <!-- ひげ（左） -->
+      <line x1="38" y1="90" x2="65" y2="93" stroke="#444" stroke-width="1.2"/>
+      <line x1="36" y1="96" x2="65" y2="96" stroke="#444" stroke-width="1.2"/>
+      <line x1="38" y1="102" x2="65" y2="99" stroke="#444" stroke-width="1.2"/>
+      <!-- ひげ（右） -->
+      <line x1="122" y1="90" x2="95" y2="93" stroke="#444" stroke-width="1.2"/>
+      <line x1="124" y1="96" x2="95" y2="96" stroke="#444" stroke-width="1.2"/>
+      <line x1="122" y1="102" x2="95" y2="99" stroke="#444" stroke-width="1.2"/>
+      <!-- 前足 -->
+      <ellipse cx="58" cy="168" rx="16" ry="10" fill="#111"/>
+      <ellipse cx="102" cy="168" rx="16" ry="10" fill="#111"/>
+      <!-- 肉球風 -->
+      <circle cx="52" cy="171" r="3" fill="#1a1a1a"/>
+      <circle cx="58" cy="174" r="3.5" fill="#1a1a1a"/>
+      <circle cx="64" cy="171" r="3" fill="#1a1a1a"/>
+      <circle cx="96" cy="171" r="3" fill="#1a1a1a"/>
+      <circle cx="102" cy="174" r="3.5" fill="#1a1a1a"/>
+      <circle cx="108" cy="171" r="3" fill="#1a1a1a"/>
+    </svg>
+  </div>
+
+  <!-- カード -->
+  <div class="card">
+    <div class="label">アラーム時刻</div>
+    <input type="time" id="alarmTime" value="07:00">
+    <button id="toggleBtn" onclick="toggle()">セットする</button>
+    <div id="status">—</div>
+  </div>
+
+  <!-- 鳴動オーバーレイ -->
+  <div id="overlay">
+    <div id="overlayTime"></div>
+    <div class="overlay-msg">🐱 起きてにゃ〜！</div>
+    <button id="stopBtn" onclick="stop()">止める</button>
+  </div>
+
+<script>
+  // 星を生成
+  const starsEl = document.getElementById('stars');
+  for (let i = 0; i < 80; i++) {
+    const s = document.createElement('div');
+    s.className = 'star';
+    const size = Math.random() * 2.5 + 0.5;
+    s.style.cssText = `
+      width:${size}px; height:${size}px;
+      top:${Math.random()*100}%;
+      left:${Math.random()*100}%;
+      --d:${(Math.random()*2+1).toFixed(1)}s;
+      animation-delay:${(Math.random()*3).toFixed(1)}s
+    `;
+    starsEl.appendChild(s);
+  }
+
+  let active  = false;
+  let ringing = false;
+  let audioCtx = null;
+  let alarmInterval = null;
+
+  // 時計
+  function tick() {
+    const now = new Date();
+    const hh = String(now.getHours()).padStart(2,'0');
+    const mm = String(now.getMinutes()).padStart(2,'0');
+    const ss = String(now.getSeconds()).padStart(2,'0');
+    document.getElementById('clock').textContent = `${hh}:${mm}:${ss}`;
+
+    if (active && !ringing && document.getElementById('alarmTime').value === `${hh}:${mm}`) {
+      ring();
+    }
+  }
+  setInterval(tick, 1000);
+  tick();
+
+  // ON/OFF
+  function toggle() {
+    const input = document.getElementById('alarmTime');
+    const btn   = document.getElementById('toggleBtn');
+    const st    = document.getElementById('status');
+    const cat   = document.getElementById('catWrap');
+    const bub   = document.getElementById('bubble');
+
+    if (!active) {
+      if (!input.value) { st.textContent = '時刻を選んでにゃ'; return; }
+      active = true;
+      btn.textContent = 'キャンセル';
+      btn.classList.add('active');
+      st.textContent  = `${input.value} にアラームをセット 🐾`;
+      st.className    = 'on';
+      input.disabled  = true;
+      cat.classList.add('active');
+
+      // 吹き出し
+      bub.textContent = 'まかせてにゃ 🐾';
+      bub.classList.add('show');
+      setTimeout(() => bub.classList.remove('show'), 2000);
+    } else {
+      reset();
+    }
+  }
+
+  function ring() {
+    ringing = true;
+    const cat = document.getElementById('catWrap');
+    const bub = document.getElementById('bubble');
+    cat.classList.remove('active');
+    cat.classList.add('ring');
+    document.getElementById('overlayTime').textContent = document.getElementById('alarmTime').value;
+    document.getElementById('overlay').classList.add('show');
+    playBeep();
+    bub.textContent = '起きてにゃ〜！';
+    bub.classList.add('show');
+  }
+
+  function stop() {
+    ringing = false;
+    document.getElementById('overlay').classList.remove('show');
+    stopBeep();
+    document.getElementById('bubble').classList.remove('show');
+    reset();
+  }
+
+  function reset() {
+    active = false;
+    const cat   = document.getElementById('catWrap');
+    const btn   = document.getElementById('toggleBtn');
+    const st    = document.getElementById('status');
+    const input = document.getElementById('alarmTime');
+    cat.classList.remove('active','ring');
+    btn.textContent = 'セットする';
+    btn.classList.remove('active');
+    st.textContent  = '—';
+    st.className    = '';
+    input.disabled  = false;
+  }
+
+  // Web Audio API
+  function playBeep() {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+    function beep() {
+      if (!ringing) return;
+      // 「にゃー」っぽい音: 周波数スウィープ
+      const osc  = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(600, audioCtx.currentTime);
+      osc.frequency.linearRampToValueAtTime(900, audioCtx.currentTime + 0.3);
+      osc.frequency.linearRampToValueAtTime(700, audioCtx.currentTime + 0.6);
+      gain.gain.setValueAtTime(0.35, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.7);
+      osc.start(audioCtx.currentTime);
+      osc.stop(audioCtx.currentTime + 0.7);
+      setTimeout(beep, 1100);
+    }
+    beep();
+  }
+
+  function stopBeep() {
+    if (audioCtx) { audioCtx.close(); audioCtx = null; }
+  }
+
+  // 猫をクリックしたら反応
+  document.getElementById('catWrap').addEventListener('click', () => {
+    const bub = document.getElementById('bubble');
+    const msgs = ['にゃ〜ん 🐾','なでて〜','ごはんは？','zzz...','みゃっ！'];
+    bub.textContent = msgs[Math.floor(Math.random()*msgs.length)];
+    bub.classList.add('show');
+    setTimeout(() => bub.classList.remove('show'), 1800);
+  });
+</script>
+</body>
+</html>
